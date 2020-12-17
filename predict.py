@@ -18,18 +18,27 @@ import matplotlib.pyplot as plt
 import argparse
 import configparser
 
+import json
 
 parser = argparse.ArgumentParser(description='New inputs:')
+parser.add_argument('input', action="store", default='checkpoint.pth')
 parser.add_argument('--top_k', default='5')
 parser.add_argument('--category_names', default='ImageClassifier/cat_to_name.json')
 parser.add_argument('--gpu', default='cuda')
+parser.add_argument('--image', default='None')
 
 command_line = parser.parse_args()
+topk = int(command_line.top_k)
+
+if command_line.image == "None": im = random.choice(glob.glob('ImageClassifier/flowers/test/*/*.jpg'))
+else: im = command_line.image
 
 
-## TODO: Write a function that loads a checkpoint and rebuilds the model
+with open(command_line.category_names, 'r') as f:
+    cat_to_name = json.load(f)
+
 model = models.densenet121(pretrained=True)
-cat_to_name = None
+
 
 def load_checkpoint(filepath):
     checkpoint = torch.load(filepath)
@@ -39,15 +48,10 @@ def load_checkpoint(filepath):
     
     return model
 
-import json
 
-with open(command_line.category_names, 'r') as f:
-    cat_to_name = json.load(f)
 
-print(cat_to_name)
-model = load_checkpoint('checkpoint.pth')
+model = load_checkpoint(command_line.input)
 model.to(command_line.gpu)
-print(cat_to_name)
 
 
 def process_image(image):
@@ -81,9 +85,7 @@ def process_image(image):
     np_im=np_im.transpose((2,0,1))
     return np_im
     
-# TODO: Process a PIL image for use in a PyTorch model
 
-im = random.choice(glob.glob('./ImageClassifier/flowers/test/*/*.jpg'))
 process_image(im)
 
 print(process_image)
@@ -111,10 +113,6 @@ def imshow(image, ax=None, title=None):
     
     return ax
 
-im = random.choice(glob.glob('ImageClassifier/flowers/test/*/*.jpg'))
-print(im)
-
-
 
 
 #def predict(image_path, model, topk=5):
@@ -123,7 +121,7 @@ print(im)
     
     # TODO: Implement the code to predict the class from an image file
     
-def predict(image_path, model, topk=command_line.top_k):
+def predict(image_path, model, topk):
 
     model.eval()
     
@@ -147,10 +145,10 @@ def predict(image_path, model, topk=command_line.top_k):
         
     return top_prob.cpu().numpy()[0],classes
 
-im = random.choice(glob.glob('ImageClassifier/flowers/test/*/*.jpg'))
-print(im)
-top_probs, top_classes = predict(im, model)  
 
+top_probs, top_classes = predict(im, model, topk)  
+
+print(im)
 print(top_probs)
 print(top_classes)
 

@@ -17,11 +17,13 @@ import matplotlib.pyplot as plt
 
 import argparse
 import configparser
+import json
+
 
 parser = argparse.ArgumentParser(description='New inputs:')
 parser.add_argument('data_dir', action="store", default='ImageClassifier/flowers')
 parser.add_argument('--save_dir', default='')
-parser.add_argument('--arch', default='densenet121')
+parser.add_argument('--arch', default='vgg16')
 parser.add_argument('--learning_rate', default='0.001')
 parser.add_argument('--hidden_units', default='500')
 parser.add_argument('--epochs', default='3')
@@ -32,12 +34,22 @@ print("data_dir: {}".format(command_line.data_dir))
 print("save_dir: {}".format(command_line.save_dir))
 data_dir = command_line.data_dir
 save_dir = str(command_line.save_dir) + '/checkpoint.pth'
+
 arch = str(command_line.arch)
+arch_options = ['vgg13', 'vgg16']
+if arch not in arch_options: print("Architecture {} is not supported. Please make your choice from: {}.".format(arch, arch_options))
+
 learning_rate = float(command_line.learning_rate)
 hidden_units = int(command_line.hidden_units)
 epochs = int(command_line.epochs)
 gpu = str(command_line.gpu)
+if gpu and torch.cuda.is_available():
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
 
+with open('ImageClassifier/cat_to_name.json', 'r') as f:
+    cat_to_name = json.load(f)
 
 train_dir = data_dir + '/train'
 valid_dir = data_dir + '/valid'
@@ -79,19 +91,11 @@ validloader = torch.utils.data.DataLoader(valid_dataset, batch_size=32)
 
 
 
-import json
-
-with open('ImageClassifier/cat_to_name.json', 'r') as f:
-    cat_to_name = json.load(f)
-
 
     
 model = getattr(models, arch)(pretrained=True)
 
-if command_line.arch == 'densenet121':
-    input_units = 1024
-if command_line.arch == 'vgg13':
-    input_units = 25088
+input_units = 25088
 
 
 # Freeze parameters so we don't backprop through them
@@ -117,15 +121,16 @@ optimizer = optim.Adam(model.classifier.parameters(), lr=learning_rate)
 print_every = 40
 steps = 0
 
-# change to cuda
-model.to(gpu)
+model.to(device)
   
 for e in range(epochs):
     running_loss = 0
+    test_loss = 0
+    accuracy = 0
     for ii, (inputs, labels) in enumerate(trainloader):
         steps += 1
         
-        inputs, labels = inputs.to(gpu), labels.to(gpu)
+        inputs, labels = inputs.to(device), labels.to(device)
         
         optimizer.zero_grad()
         
@@ -138,21 +143,36 @@ for e in range(epochs):
         running_loss += loss.item()
         
         if steps % print_every == 0:
+            model.eval()
+            test_loss = 0
+            accuracy = 0
+        
+            with torch.no_grad():
+                for inputs , labels in validloader:
+                    inputs, labels = inputs.to(device), labels.to(device)
+                    logps = model(inputs)
+                    loss = criterion(logps,labels)
+                    test_loss += loss.item()
+                    ps = torch.exp(logps)
+                    top_p, top_class = ps.topk(1, dim=1)
+                    equality = top_class == labels.view(*top_class.shape)
+                    accuracy += torch.mean(equality.type(torch.cuda.FloatTensor)).item()
+
             print("Epoch: {}/{}... ".format(e+1, epochs),
-                  "Loss: {:.4f}".format(running_loss/print_every))
-            
+                  "Loss: {:.4f}".format(running_loss/print_every),
+                  "Validation loss: {:.4f}".format(test_loss/len(validloader)),
+                  "Validation Accuracy {:.4f}".format(accuracy/len(validloader)*100))
+                   
             running_loss = 0
             
             
-            
-
 correct = 0
 total = 0
 with torch.no_grad():
     for data in testloader:
         
         #images, labels = data
-        images, labels = inputs.to(gpu), labels.to(gpu)
+        images, labels = inputs.to(device), labels.to(device)
         
         #outputs = model(images)
         outputs = model.forward(images)
@@ -163,6 +183,25 @@ with torch.no_grad():
 
 print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
 
+
+
+
+correct = 0
+total = 0
+with torch.no_grad():
+    for data in validloader:
+        
+        #images, labels = data
+        images, labels = inputs.to(device), labels.to(device)
+        
+        #outputs = model(images)
+        outputs = model.forward(images)
+        
+        _, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+print('Accuracy of the network on the 10000 validation images: %d %%' % (100 * correct / total))
 
 
 
