@@ -33,7 +33,13 @@ topk = int(command_line.top_k)
 if command_line.image == "None": im = random.choice(glob.glob('ImageClassifier/flowers/test/*/*.jpg'))
 else: im = command_line.image
 
+gpu = str(command_line.gpu)
+if gpu and torch.cuda.is_available():
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
 
+    
 with open(command_line.category_names, 'r') as f:
     cat_to_name = json.load(f)
 
@@ -51,7 +57,7 @@ def load_checkpoint(filepath):
 
 
 model = load_checkpoint(command_line.input)
-model.to(command_line.gpu)
+model.to(device)
 
 
 def process_image(image):
@@ -128,7 +134,7 @@ def predict(image_path, model, topk):
     processed_img=torch.from_numpy(process_image(image_path)).type(torch.FloatTensor).unsqueeze_(0)
 
     with torch.no_grad():
-        processed_img=processed_img.to(command_line.gpu)
+        processed_img=processed_img.to(device)
         
         output=model.forward(processed_img)
                 
